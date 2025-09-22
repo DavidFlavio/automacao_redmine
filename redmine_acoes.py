@@ -39,3 +39,28 @@ def adicionar_nota_em_massa(redmine, lista_de_chamados, texto_da_nota):
         adicionar_nota(redmine, chamado.id, texto_da_nota)
     
     print("\n--- Atualização em massa concluída! ---")
+    
+# <<< NOVA FUNÇÃO PARA ENCAMINHAR TAREFAS >>>
+def encaminhar_chamado(redmine, id_do_chamado, id_destinatario):
+    """
+    Altera o responsável (assigned_to_id) de um chamado específico.
+
+    Argumentos:
+        redmine (Redmine): O objeto de conexão com o Redmine.
+        id_do_chamado (int): O ID do chamado a ser reatribuído.
+        id_destinatario (int): O ID do novo usuário responsável.
+
+    Retorna:
+        bool: True se o encaminhamento foi bem-sucedido, False caso contrário.
+    """
+    try:
+        print(f"Encaminhando chamado #{id_do_chamado} para o usuário ID {id_destinatario}...")
+        # A mágica está no parâmetro 'assigned_to_id' do método update.
+        redmine.issue.update(id_do_chamado, assigned_to_id=id_destinatario)
+        print("✅ Chamado encaminhado com sucesso!")
+        return True
+    except Exception as e:
+        # O Redmine pode retornar um erro se o ID do destinatário for inválido.
+        print(f"❌ Ocorreu um erro ao tentar encaminhar o chamado: {e}")
+        print("   Verifique se o ID do destinatário é válido e tem permissão no projeto.")
+        return False

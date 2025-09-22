@@ -1,5 +1,3 @@
-# Arquivo: analise.py
-
 import re
 import json
 
@@ -18,7 +16,6 @@ def carregar_padroes(caminho_do_arquivo):
         print(f"❌ ERRO: Ocorreu um erro inesperado ao carregar os padrões: {e}")
         return []
 
-# <<< MUDANÇA PRINCIPAL AQUI >>>
 def encontrar_nota_com_sql(chamado, padroes_sql):
     """
     Verifica as anotações de um chamado e retorna a primeira nota que contém um padrão SQL.
