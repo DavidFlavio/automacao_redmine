@@ -1,0 +1,14 @@
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y \
+    python3-tk \
+    libtk8.6 \
+    binutils \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir customtkinter python-redmine pyinstaller
+
+# O parâmetro -n define o nome do arquivo final
+CMD ["pyinstaller", "--noconsole", "--onefile", "--collect-all", "customtkinter", "-n", "interface_gui_Linux", "interface_gui.py"]

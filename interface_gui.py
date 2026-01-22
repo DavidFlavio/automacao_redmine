@@ -6,67 +6,52 @@ import os
 import json
 from redminelib import Redmine
 
-# Importando seus módulos locais
+# Importações dos seus módulos locais
 from redmine_acoes import adicionar_nota, encaminhar_chamado
 from analise import carregar_padroes, encontrar_nota_com_sql
 
-# Configurações de Aparência
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
 
-# --- JANELA POP-UP PARA SELEÇÃO DE DESTINATÁRIO ---
+# --- POP-UP DE ENCAMINHAMENTO ---
 class JanelaEncaminhar(ctk.CTkToplevel):
     def __init__(self, parent, lista_nomes, callback):
         super().__init__(parent)
-        self.title("Encaminhamento")
+        self.title("Encaminhar")
         self.geometry("380x220")
         self.callback = callback
-        
-        # Garante que a janela fique no topo e bloqueie a principal até fechar
         self.attributes("-topmost", True)
         self.grab_set() 
 
-        ctk.CTkLabel(self, text="Selecione o destinatário para encaminhar:", font=("Roboto", 14)).pack(pady=20)
+        ctk.CTkLabel(self, text="Selecione o destinatário:", font=("Roboto", 14)).pack(pady=20)
         self.combo = ctk.CTkComboBox(self, values=lista_nomes, width=250)
         self.combo.pack(pady=10)
-        
         ctk.CTkButton(self, text="Confirmar", command=self.confirmar).pack(pady=20)
 
     def confirmar(self):
         self.callback(self.combo.get())
         self.destroy()
 
-# --- APLICAÇÃO PRINCIPAL ---
+# --- APP PRINCIPAL ---
 class AppRedmine(ctk.CTk):
     def __init__(self):
         super().__init__()
-
-        # Configurações iniciais da janela
         self.title("Sistema de Automação TJCE - Pro")
         self.geometry("1100x750")
 
-        # Dados do Redmine e padrões
         self.redmine_url = 'https://redmine.tjce.jus.br/'
         self.padroes = carregar_padroes('padroes_sql.json')
-        
-        # Sessão e Dados de Equipe
         self.redmine_session = None
         self.arquivo_equipe = 'equipe.json'
         self.equipe = self.carregar_equipe_dados()
-        
         self.found_issues = []
         self.parar_solicitado = False
 
-        # Container Principal para troca de telas
         self.container = ctk.CTkFrame(self)
         self.container.pack(fill="both", expand=True)
-
-        # Inicia pela Tela de Login
         self.mostrar_tela_login()
 
-    # --- PERSISTÊNCIA E DADOS ---
     def carregar_equipe_dados(self):
-        """Carrega equipe do JSON ou cria com dados padrão do usuário."""
         if os.path.exists(self.arquivo_equipe):
             with open(self.arquivo_equipe, 'r', encoding='utf-8') as f:
                 return json.load(f)
@@ -75,41 +60,12 @@ class AppRedmine(ctk.CTk):
             json.dump(base, f, indent=4, ensure_ascii=False)
         return base
 
-    def salvar_equipe(self, dados):
-        with open(self.arquivo_equipe, 'w', encoding='utf-8') as f:
-            json.dump(dados, f, indent=4, ensure_ascii=False)
-
-    # --- NAVEGAÇÃO ---
-    def limpar_container(self):
-        for child in self.container.winfo_children():
-            child.destroy()
-
-    def setup_menus(self):
-        self.menu_bar = tk.Menu(self)
-        self.config(menu=self.menu_bar)
-        
-        m_redmine = tk.Menu(self.menu_bar, tearoff=0)
-        self.menu_bar.add_cascade(label="Redmine", menu=m_redmine)
-        m_redmine.add_command(label="Validações SQL", command=self.mostrar_tela_validacao)
-        m_redmine.add_separator()
-        m_redmine.add_command(label="Logout", command=self.mostrar_tela_login)
-
-        m_ajustes = tk.Menu(self.menu_bar, tearoff=0)
-        self.menu_bar.add_cascade(label="Ajustes", menu=m_ajustes)
-        m_ajustes.add_command(label="Cadastro de Equipe", command=self.mostrar_tela_ajustes)
-
-        m_kanban = tk.Menu(self.menu_bar, tearoff=0)
-        self.menu_bar.add_cascade(label="Kanban", menu=m_kanban)
-        m_kanban.add_command(label="Ver Quadro", command=self.mostrar_tela_kanban)
-
     # --- TELAS ---
     def mostrar_tela_login(self):
-        self.limpar_container()
-        self.config(menu="") # Esconde menu no login
-        
+        self.config(menu="")
+        for child in self.container.winfo_children(): child.destroy()
         f = ctk.CTkFrame(self.container, width=350, height=450)
         f.place(relx=0.5, rely=0.5, anchor="center")
-
         ctk.CTkLabel(f, text="🔒 Login Redmine", font=("Roboto", 22, "bold")).pack(pady=30)
         self.ent_u = ctk.CTkEntry(f, placeholder_text="Usuário (Rede)", width=250)
         self.ent_u.pack(pady=10)
@@ -120,115 +76,54 @@ class AppRedmine(ctk.CTk):
     def tentar_login(self):
         u, p = self.ent_u.get().strip(), self.ent_p.get().strip()
         try:
-            # Conexão estabelecida com sucesso se chegar aqui
             red = Redmine(self.redmine_url, username=u, password=p)
-            
-            # COMANDO CORRIGIDO: get('current') em vez de current()
-            user = red.user.get('current') 
-            
+            red.user.get('current')
             self.redmine_session = red
             self.setup_menus()
             self.mostrar_tela_validacao()
         except Exception as e:
-            error_msg = str(e)
-            # Se o erro for o 401, as credenciais estão erradas
-            if "401" in error_msg or "Invalid authentication details" in error_msg:
-                msg = "❌ Usuário ou senha incorretos."
-            # Se for erro de conexão (VPN desligada)
-            elif "Connection" in error_msg or "Failed to establish" in error_msg:
-                msg = "⚠️ Sem conexão ao Redmine.\nVerifique sua VPN ou Internet!"
-            else:
-                msg = f"Erro inesperado: {error_msg}"
-            
-            self.after(0, lambda m=msg: messagebox.showerror("Erro de Acesso", m))
+            err = str(e)
+            msg = "❌ Usuário ou senha incorretos." if "Invalid authentication details" in err or "401" in err else f"Erro: {err}"
+            messagebox.showerror("Erro de Acesso", msg)
 
-    def mostrar_tela_validacao(self):
-        self.limpar_container()
-        v = ctk.CTkFrame(self.container, fg_color="transparent")
-        v.pack(fill="both", expand=True)
-        v.grid_columnconfigure(1, weight=1)
-        v.grid_rowconfigure(0, weight=1)
+    def setup_interface_validacao(self, parent):
+        parent.grid_columnconfigure(1, weight=1)
+        parent.grid_rowconfigure(0, weight=1)
+        sidebar = ctk.CTkFrame(parent, width=250, corner_radius=0)
+        sidebar.grid(row=0, column=0, sticky="nsew")
 
-        # Sidebar
-        s = ctk.CTkFrame(v, width=250, corner_radius=0)
-        s.grid(row=0, column=0, sticky="nsew")
+        ctk.CTkLabel(sidebar, text="PESQUISA", font=("Roboto", 18, "bold")).pack(pady=20)
         
-        self.entry_search = ctk.CTkEntry(s, placeholder_text="ID Usuário Pesquisa")
-        self.entry_search.pack(pady=10, padx=20, fill="x")
-        self.opt_status = ctk.CTkOptionMenu(s, values=["Abertos", "Fechados", "Todos"])
+        ctk.CTkLabel(sidebar, text="Pesquisar por:", font=("Roboto", 12)).pack(pady=(5,0))
+        self.combo_search = ctk.CTkComboBox(sidebar, values=sorted(list(self.equipe.keys())))
+        self.combo_search.pack(pady=10, padx=20, fill="x")
+
+        self.opt_status = ctk.CTkOptionMenu(sidebar, values=["Abertos", "Fechados", "Todos"])
         self.opt_status.pack(pady=10, padx=20, fill="x")
         
-        self.btn_buscar = ctk.CTkButton(s, text="🔍 Buscar", command=self.iniciar_thread_busca)
-        self.btn_buscar.pack(pady=10, padx=20, fill="x")
-        self.btn_parar = ctk.CTkButton(s, text="🛑 Parar", fg_color="#C0392B", command=self.solicitar_parada, state="disabled")
-        self.btn_parar.pack(pady=5, padx=20, fill="x")
-        
-        self.progressbar = ctk.CTkProgressBar(s)
+        self.btn_buscar = ctk.CTkButton(sidebar, text="🔍 Buscar", font=("Roboto", 13, "bold"), command=self.iniciar_thread_busca)
+        self.btn_buscar.pack(pady=(20, 10), padx=20, fill="x")
+
+        # BARRA DE PROGRESSO: Agora abaixo do botão buscar, com cor personalizada
+        self.progressbar = ctk.CTkProgressBar(sidebar, progress_color="#2ECC71", height=10)
         self.progressbar.pack(pady=10, padx=20, fill="x")
         self.progressbar.set(0)
-        
-        self.btn_massa = ctk.CTkButton(s, text="📝 Nota em Massa", state="disabled", command=self.acao_nota_massa)
-        self.btn_massa.pack(pady=30, padx=20, fill="x")
 
-        # Scroll
-        self.scrollable_frame = ctk.CTkScrollableFrame(v, label_text="Chamados Encontrados")
+        self.btn_parar = ctk.CTkButton(sidebar, text="🛑 Parar", fg_color="#C0392B", hover_color="#962D22", command=self.solicitar_parada, state="disabled")
+        self.btn_parar.pack(pady=5, padx=20, fill="x")
+        
+        # BOTÃO NOTA EM MASSA: Mais baixo e com cor distinta (Teal/Dark Blue)
+        self.btn_massa = ctk.CTkButton(sidebar, text="📝 Nota em Massa", state="disabled", fg_color="#2E4053", hover_color="#212F3C", command=self.acao_nota_massa)
+        self.btn_massa.pack(pady=(60, 20), padx=20, fill="x")
+
+        self.scrollable_frame = ctk.CTkScrollableFrame(parent, label_text="Chamados Identificados")
         self.scrollable_frame.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
 
-    def mostrar_tela_ajustes(self):
-        self.limpar_container()
-        f = ctk.CTkFrame(self.container)
-        f.pack(pady=20, padx=20, fill="both", expand=True)
-        ctk.CTkLabel(f, text="👥 Cadastro de Equipe", font=("Roboto", 20, "bold")).pack(pady=15)
-        
-        form = ctk.CTkFrame(f, fg_color="transparent")
-        form.pack(pady=10)
-        self.ent_n = ctk.CTkEntry(form, placeholder_text="Nome", width=200)
-        self.ent_n.grid(row=0, column=0, padx=5)
-        self.ent_i = ctk.CTkEntry(form, placeholder_text="ID Redmine", width=100)
-        self.ent_i.grid(row=0, column=1, padx=5)
-        ctk.CTkButton(form, text="Salvar", command=self.salvar_membro).grid(row=0, column=2, padx=5)
-
-        self.txt_lista = ctk.CTkTextbox(f, width=450, height=350)
-        self.txt_lista.pack(pady=10)
-        self.refresh_equipe_ui()
-
-    def mostrar_tela_kanban(self):
-        self.limpar_container()
-        ctk.CTkLabel(self.container, text="📋 Kanban\n(Funcionalidade em desenvolvimento)", font=("Roboto", 20)).pack(pady=100)
-
-    # --- LÓGICA DE APOIO ---
-    def salvar_membro(self):
-        n, i = self.ent_n.get().strip(), self.ent_i.get().strip()
-        if n and i.isdigit():
-            self.equipe[n] = int(i)
-            self.salvar_equipe(self.equipe)
-            self.refresh_equipe_ui()
-            self.ent_n.delete(0, 'end'); self.ent_i.delete(0, 'end')
-
-    def refresh_equipe_ui(self):
-        self.txt_lista.delete("1.0", "end")
-        for n, rid in sorted(self.equipe.items()):
-            self.txt_lista.insert("end", f"👤 {n} (ID: {rid})\n")
-
-    def iniciar_thread_busca(self):
-        self.parar_solicitado = False
-        self.progressbar.configure(mode="indeterminate"); self.progressbar.start()
-        self.btn_buscar.configure(state="disabled"); self.btn_parar.configure(state="normal")
-        for child in self.scrollable_frame.winfo_children(): child.destroy()
-        threading.Thread(target=self.executar_busca, daemon=True).start()
-
-    def solicitar_parada(self):
-        self.parar_solicitado = True
-        self.finalizar_busca()
-
-    def finalizar_busca(self):
-        self.progressbar.stop(); self.progressbar.configure(mode="determinate")
-        self.progressbar.set(1 if not self.parar_solicitado else 0)
-        self.btn_buscar.configure(state="normal"); self.btn_parar.configure(state="disabled")
-
+    # --- LÓGICA DE NEGÓCIO ---
     def executar_busca(self):
         try:
-            uid = int(self.entry_search.get())
+            nome_sel = self.combo_search.get()
+            uid = self.equipe.get(nome_sel)
             s_map = {"Abertos": "open", "Fechados": "closed", "Todos": "*"}
             issues = self.redmine_session.issue.filter(assigned_to_id=uid, status_id=s_map[self.opt_status.get()], include=['journals'])
             
@@ -238,66 +133,139 @@ class AppRedmine(ctk.CTk):
                 if self.parar_solicitado: break
                 for j in i.journals:
                     notes = getattr(j, 'notes', "")
+                    # Proteção contra NoneType e strings vazias
                     if notes and isinstance(notes, str) and gatilho.lower() in notes.lower():
                         self.found_issues.append(i)
                         break
-            
             self.after(0, self.renderizar_resultados)
         except Exception as e:
             err = str(e)
             msg = "⚠️ Sem conexão ao Redmine.\nVerifique Internet ou VPN!" if "Connection" in err else f"Erro: {err}"
-            self.after(0, lambda m=msg: messagebox.showerror("Busca Falhou", m))
+            self.after(0, lambda m=msg: messagebox.showerror("Falha na Busca", m))
         finally:
             self.after(0, self.finalizar_busca)
 
     def renderizar_resultados(self):
+        for child in self.scrollable_frame.winfo_children(): child.destroy()
         if not self.found_issues:
             ctk.CTkLabel(self.scrollable_frame, text="Nenhum chamado identificado.").pack(pady=20)
             return
         self.btn_massa.configure(state="normal")
         for issue in self.found_issues:
             if self.parar_solicitado: break
-            self.criar_card_chamado(issue)
+            self.criar_card_detalhado(issue)
 
-    def criar_card_chamado(self, issue):
-        card = ctk.CTkFrame(self.scrollable_frame)
-        card.pack(fill="x", pady=5, padx=5)
-        res = encontrar_nota_com_sql(issue, self.padroes)
-        ctk.CTkLabel(card, text=f"#{issue.id} - {issue.subject[:50]}...", font=("Roboto", 12, "bold")).pack(side="left", padx=10, pady=10)
-        ctk.CTkLabel(card, text="✅ OK" if res else "❌ S/ SQL", text_color="green" if res else "red").pack(side="left", padx=15)
-        ctk.CTkButton(card, text="Ações", width=70, command=lambda i=issue: self.acao_nota_individual(i)).pack(side="right", padx=10)
+    def criar_card_detalhado(self, issue):
+        """Cria um card com informações ricas, similar ao prompt."""
+        sql_script = encontrar_nota_com_sql(issue, self.padroes)
+        cor_borda = "#27AE60" if sql_script else "#C0392B"
+        
+        card = ctk.CTkFrame(self.scrollable_frame, border_width=2, border_color=cor_borda)
+        card.pack(fill="x", pady=10, padx=10)
 
-    # --- AÇÕES (COMENTÁRIO + ENCAMINHAMENTO) ---
+        # Cabeçalho
+        ctk.CTkLabel(card, text=f"#{issue.id} - {issue.subject}", font=("Roboto", 14, "bold"), anchor="w", justify="left").pack(fill="x", padx=15, pady=(10, 5))
+
+        # Metadados
+        meta = ctk.CTkFrame(card, fg_color="transparent")
+        meta.pack(fill="x", padx=15, pady=2)
+        detalhes = [f"👤 Autor: {issue.author.name}", f"🚩 Prioridade: {issue.priority.name}", f"📅 Criado em: {issue.created_on.strftime('%d/%m/%Y')}", f"📊 Status: {issue.status.name}"]
+        for info in detalhes:
+            ctk.CTkLabel(meta, text=info, font=("Roboto", 11), text_color="gray").pack(side="left", padx=(0, 15))
+
+        # SQL Script
+        if sql_script:
+            ctk.CTkLabel(card, text="📄 Script SQL Detectado:", font=("Roboto", 11, "bold")).pack(padx=15, anchor="w", pady=(10, 0))
+            txt = ctk.CTkTextbox(card, height=120, font=("Consolas", 11), fg_color="#1e1e1e", text_color="#D4D4D4")
+            txt.pack(fill="x", padx=15, pady=5)
+            txt.insert("1.0", sql_script.strip())
+            txt.configure(state="disabled")
+        else:
+            ctk.CTkLabel(card, text="⚠️ Nenhum padrão SQL identificado nas notas.", text_color="#E74C3C", font=("Roboto", 11, "italic")).pack(padx=15, anchor="w", pady=10)
+
+        ctk.CTkButton(card, text="Realizar Ações", width=120, command=lambda i=issue: self.acao_nota_individual(i)).pack(pady=10, padx=15, anchor="e")
+
+    # --- SUPORTE ---
+    def setup_menus(self):
+        self.menu_bar = tk.Menu(self)
+        self.config(menu=self.menu_bar)
+        m = tk.Menu(self.menu_bar, tearoff=0)
+        self.menu_bar.add_cascade(label="Redmine", menu=m)
+        m.add_command(label="Validações", command=self.mostrar_tela_validacao)
+        m.add_command(label="Logout", command=self.mostrar_tela_login)
+        a = tk.Menu(self.menu_bar, tearoff=0)
+        self.menu_bar.add_cascade(label="Ajustes", menu=a)
+        a.add_command(label="Equipe", command=self.mostrar_tela_ajustes)
+
+    def mostrar_tela_validacao(self):
+        for child in self.container.winfo_children(): child.destroy()
+        v = ctk.CTkFrame(self.container, fg_color="transparent")
+        v.pack(fill="both", expand=True)
+        self.setup_interface_validacao(v)
+
+    def mostrar_tela_ajustes(self):
+        for child in self.container.winfo_children(): child.destroy()
+        f = ctk.CTkFrame(self.container); f.pack(pady=20, padx=20, fill="both", expand=True)
+        ctk.CTkLabel(f, text="👥 Equipe", font=("Roboto", 20, "bold")).pack(pady=15)
+        self.ent_n = ctk.CTkEntry(f, placeholder_text="Nome", width=200); self.ent_n.pack(pady=5)
+        self.ent_i = ctk.CTkEntry(f, placeholder_text="ID", width=100); self.ent_i.pack(pady=5)
+        ctk.CTkButton(f, text="Salvar", command=self.salvar_membro).pack(pady=10)
+        self.txt_l = ctk.CTkTextbox(f, width=400, height=300); self.txt_l.pack(); self.refresh_ui()
+
+    def salvar_membro(self):
+        n, i = self.ent_n.get().strip(), self.ent_i.get().strip()
+        if n and i.isdigit():
+            self.equipe[n] = int(i)
+            with open(self.arquivo_equipe, 'w', encoding='utf-8') as f: json.dump(self.equipe, f, indent=4, ensure_ascii=False)
+            self.refresh_ui()
+
+    def refresh_ui(self):
+        self.txt_l.delete("1.0", "end")
+        for n, rid in sorted(self.equipe.items()): self.txt_l.insert("end", f"👤 {n} (ID: {rid})\n")
+
+    def iniciar_thread_busca(self):
+        self.parar_solicitado = False
+        self.progressbar.configure(mode="indeterminate"); self.progressbar.start()
+        self.btn_buscar.configure(state="disabled"); self.btn_parar.configure(state="normal")
+        threading.Thread(target=self.executar_busca, daemon=True).start()
+
+    def finalizar_busca(self):
+        self.progressbar.stop(); self.progressbar.configure(mode="determinate")
+        self.progressbar.set(1 if not self.parar_solicitado else 0)
+        self.btn_buscar.configure(state="normal"); self.btn_parar.configure(state="disabled")
+
+    def solicitar_parada(self): self.parar_solicitado = True; self.finalizar_busca()
+
     def acao_nota_individual(self, issue):
-        nota = ctk.CTkInputDialog(text=f"Nota para #{issue.id}:", title="Comentar").get_input()
+        nota = ctk.CTkInputDialog(text=f"Nota para #{issue.id}:", title="Nota").get_input()
         if nota:
-            nomes = ["NÃO ENCAMINHAR"] + sorted(list(self.equipe.keys()))
-            def callback(nome_escolhido):
-                id_dest = self.equipe.get(nome_escolhido)
-                def task():
-                    if adicionar_nota(self.redmine_session, issue.id, nota):
-                        if id_dest: encaminhar_chamado(self.redmine_session, issue.id, id_dest)
-                        self.after(0, lambda: messagebox.showinfo("Sucesso", "Chamado atualizado!"))
-                threading.Thread(target=task, daemon=True).start()
-            JanelaEncaminhar(self, nomes, callback)
+            n_lista = ["NÃO ENCAMINHAR"] + sorted(list(self.equipe.keys()))
+            def cb(nome):
+                id_d = self.equipe.get(nome)
+                threading.Thread(target=lambda: self.task_nota(issue.id, nota, id_d), daemon=True).start()
+            JanelaEncaminhar(self, n_lista, cb)
+
+    def task_nota(self, id_c, nota, id_d):
+        if adicionar_nota(self.redmine_session, id_c, nota):
+            if id_d: encaminhar_chamado(self.redmine_session, id_c, id_d)
+            self.after(0, lambda: messagebox.showinfo("Sucesso", "Chamado atualizado!"))
 
     def acao_nota_massa(self):
         nota = ctk.CTkInputDialog(text="Nota para TODOS:", title="Massa").get_input()
-        if nota:
-            nomes = ["NÃO ENCAMINHAR"] + sorted(list(self.equipe.keys()))
-            def callback(nome_escolhido):
-                id_dest = self.equipe.get(nome_escolhido)
-                if messagebox.askyesno("Confirmar", f"Atualizar {len(self.found_issues)} chamados?"):
-                    def task():
-                        for i, issue in enumerate(self.found_issues):
-                            if self.parar_solicitado: break
-                            adicionar_nota(self.redmine_session, issue.id, nota)
-                            if id_dest: encaminhar_chamado(self.redmine_session, issue.id, id_dest)
-                            self.after(0, lambda p=(i+1)/len(self.found_issues): self.progressbar.set(p))
-                        self.after(0, lambda: messagebox.showinfo("Fim", "Ações em massa concluídas!"))
-                    threading.Thread(target=task, daemon=True).start()
-            JanelaEncaminhar(self, nomes, callback)
+        if nota and messagebox.askyesno("Confirmar", f"Atualizar {len(self.found_issues)} chamados?"):
+            n_lista = ["NÃO ENCAMINHAR"] + sorted(list(self.equipe.keys()))
+            def cb(nome):
+                id_d = self.equipe.get(nome)
+                threading.Thread(target=lambda: self.task_massa(nota, id_d), daemon=True).start()
+            JanelaEncaminhar(self, n_lista, cb)
+
+    def task_massa(self, nota, id_d):
+        for i, issue in enumerate(self.found_issues):
+            if self.parar_solicitado: break
+            adicionar_nota(self.redmine_session, issue.id, nota)
+            if id_d: encaminhar_chamado(self.redmine_session, issue.id, id_d)
+            self.after(0, lambda p=(i+1)/len(self.found_issues): self.progressbar.set(p))
+        self.after(0, lambda: messagebox.showinfo("Fim", "Ação concluída!"))
 
 if __name__ == "__main__":
-    app = AppRedmine()
-    app.mainloop()
+    AppRedmine().mainloop()
